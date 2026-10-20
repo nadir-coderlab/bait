@@ -56,6 +56,11 @@ summary::after { content: ' ▾'; }
 .shotbox { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 12px; }
 .shotbtn { width: 100%; font: inherit; font-size: 16px; font-weight: 700; color: var(--ink); background: rgba(255,255,255,.1); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
 .shotbox img { display: block; width: 100%; border-radius: 12px; margin-top: 10px; border: 1px solid var(--line); }
+.voicebox { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 12px; }
+.talk { width: 100%; font: inherit; font-size: 18px; font-weight: 700; color: #fff; background: #3b5bdb; border: 0; border-radius: 16px; padding: 18px;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: none; }
+.talk.on { background: #e03131; animation: pulse 1s infinite alternate; }
+@keyframes pulse { to { opacity: .75; } }
 .msgbox { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 6px; }
 .msgbox textarea { width: 100%; font: inherit; font-size: 16px; color: var(--ink); background: rgba(0,0,0,.25); border: 1px solid var(--line);
   border-radius: 14px; padding: 12px; margin-top: 6px; resize: vertical; }
@@ -171,6 +176,15 @@ function draw(b) {
   html += '<div class="shotbox"><button class="shotbtn" data-a="shot">' + (b.shooting ? 'يصوّر…' : '📸 صوّر الشاشة') + '</button>' +
     (shot ? '<a href="' + esc(shot.url) + '" target="_blank" class="shotimg"></a><div class="mst">لقطة ' + (Date.now() - shot.ts < 60000 ? 'الحين' : 'قبل ' + ago(Date.now() - shot.ts)) + '</div>' : '') + '</div>';
 
+  // رسالة صوتية (ووكي توكي)
+  var v = s.voice || {}, vstate = '';
+  if (b.rec) vstate = b.recHold ? 'يسجّل… اترك الزر عشان ترسل' : 'يسجّل… اضغط مرة ثانية عشان ترسل';
+  else if (b.vsend) vstate = 'يرسل الصوت…';
+  else if (b.voiceId && v.id === b.voiceId) vstate = v.played ? 'انسمعت ✓' : 'يشتغل على التلفزيون…';
+  else if (b.voiceId) vstate = 'وصل، بانتظار التلفزيون…';
+  html += '<div class="voicebox"><button class="talk' + (b.rec ? ' on' : '') + '" data-a="talk">' + (b.rec ? '🔴 ' + ar(b.recSec || 0) + ' ث' : '🎙️ اضغط مطوّل وتكلّم') + '</button>' +
+    (vstate ? '<div class="mst"><b class="' + (/✓/.test(vstate) ? '' : 'wait') + '">' + vstate + '</b></div>' : '') + '</div>';
+
   // الرسالة
   var msg = s.msg || {};
   var mstate = '';
@@ -205,6 +219,9 @@ function draw(b) {
     setState(b, function (w) { w.all = !all; });
   };
   el.querySelector('[data-a=msg]').onclick = function () { sendMsg(b); };
+  var talk = el.querySelector('[data-a=talk]');
+  talk.onpointerdown = function (e) { e.preventDefault(); talkDown(b); };
+  talk.oncontextmenu = function (e) { e.preventDefault(); };
   el.querySelector('[data-a=shot]').onclick = function () {
     b.shooting = true; draw(b);
     send(b, { shot: 1 });
@@ -220,6 +237,65 @@ function draw(b) {
   if (det) det.ontoggle = function () { b.open = det.open; };
   // الضغط على اسم البوكس يفتح التطبيقات الثانية
   el.querySelector('.name').onclick = function () { b.open = !b.open; draw(b); };
+}
+
+// ---- التسجيل: ضغط مطوّل = يسجّل لين تترك، ونقرة سريعة = يبدأ ونقرة ثانية = يرسل ----
+var micStream = null, micTimer = null;
+function mic() {
+  clearTimeout(micTimer);
+  micTimer = setTimeout(function () { if (micStream) { micStream.getTracks().forEach(function (t) { t.stop(); }); micStream = null; } }, 60000);
+  if (micStream) return Promise.resolve(micStream);
+  return navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }).then(function (st) { micStream = st; return st; });
+}
+
+function talkDown(b) {
+  if (b.rec) { stopRec(b); return; }   // نقرة ثانية في وضع النقر
+  b.downAt = Date.now();
+  b.recHold = true;
+  mic().then(function (st) {
+    var type = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'].filter(function (t) { return window.MediaRecorder && MediaRecorder.isTypeSupported(t); })[0];
+    var r = new MediaRecorder(st, type ? { mimeType: type } : undefined), chunks = [];
+    r.ondataavailable = function (e) { if (e.data.size) chunks.push(e.data); };
+    r.onstop = function () {
+      var blob = new Blob(chunks, { type: r.mimeType || type || 'audio/mp4' });
+      if (blob.size < 2000) { b.rec = null; draw(b); return; }   // قصير جداً
+      sendVoice(b, blob);
+    };
+    r.start();
+    b.rec = r; b.recSec = 0;
+    b.recTick = setInterval(function () { b.recSec++; if (b.recSec >= 60) stopRec(b); else draw(b); }, 1000);
+    draw(b);
+    if (!b.recHold) stopRec(b);   // ترك الزر قبل ما يشتغل المايك
+  }).catch(function () { b.pending = 'ما قدرت أفتح المايك. اسمح لسفاري يستخدم المايكروفون.'; draw(b); });
+}
+
+// الزر ينعاد رسمه وقت التسجيل، فنسمع للترك على مستوى الصفحة
+document.addEventListener('pointerup', function () { Object.keys(boxes).forEach(function (k) { talkUp(boxes[k]); }); });
+document.addEventListener('pointercancel', function () { Object.keys(boxes).forEach(function (k) { talkUp(boxes[k]); }); });
+
+function talkUp(b) {
+  if (!b.recHold) return;
+  b.recHold = false;
+  // ضغط مطوّل: نرسل أول ما يترك. نقرة سريعة: نكمل التسجيل لين النقرة الثانية
+  if (Date.now() - b.downAt > 500 && b.rec) stopRec(b);
+  else draw(b);
+}
+
+function stopRec(b) {
+  if (!b.rec) return;
+  clearInterval(b.recTick);
+  var r = b.rec;
+  b.rec = null; b.recHold = false; b.vsend = true;
+  draw(b);
+  r.stop();
+}
+
+function sendVoice(b, blob) {
+  var ext = /mp4/.test(blob.type) ? 'm4a' : 'webm';
+  fetch(NTFY + b.topic, { method: 'PUT', body: blob, headers: { 'Filename': 'voice.' + ext, 'Message': JSON.stringify({ voice: 1 }) } })
+    .then(function (r) { return r.json(); })
+    .then(function (o) { b.vsend = false; b.voiceId = o.id; draw(b); })
+    .catch(function () { b.vsend = false; b.pending = 'ما قدرت أرسل الصوت، تأكد من النت'; draw(b); });
 }
 
 function ago(ms) {
