@@ -6,9 +6,9 @@
 <meta name="theme-color" content="#081a33">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="تحكم البيت">
+<meta name="apple-mobile-web-app-title" content="اليوتيوب">
 <link rel="apple-touch-icon" href="icon-180.png">
-<title>تحكم الشاشات</title>
+<title>اليوتيوب</title>
 <style>
 @font-face { font-family: T; src: url(fonts/thmanyah-400.otf); font-weight: 400; }
 @font-face { font-family: T; src: url(fonts/thmanyah-700.otf); font-weight: 700; }
@@ -45,15 +45,21 @@ summary { padding: 12px 2px; font-size: 15px; color: var(--soft); cursor: pointe
 summary::after { content: ' ▾'; }
 .pending { font-size: 12px; color: #e3b866; min-height: 16px; }
 .until { font-size: 13px; color: var(--red); margin-bottom: 6px; }
+.big { width: 100%; font: inherit; font-size: 20px; font-weight: 700; border: 0; border-radius: 16px; padding: 18px; margin-top: 4px; }
+.big.lock { background: #ff6b6b; color: #2a0505; }
+.big.open { background: #6ee7a8; color: #04261a; }
+.state { display: flex; align-items: center; gap: 12px; margin: 10px 0 14px; font-size: 18px; }
+.state .ic { font-size: 30px; }
+.warn { font-size: 13px; color: #e3b866; margin-bottom: 8px; }
 .empty { color: var(--soft); text-align: center; padding: 60px 10px; line-height: 1.9; }
 .note { font-size: 12px; color: var(--faint); line-height: 1.7; margin-top: 10px; }
 </style>
 </head>
 <body>
-<h1>تحكم الشاشات</h1>
-<p class="sub">اقفل التطبيقات واقطع النت عن البوكسات من أي مكان</p>
+<h1>اليوتيوب في البيت</h1>
+<p class="sub">اقفله وافتحه من جوالك، من أي مكان</p>
 <div id="boxes"></div>
-<p class="note">التحكم يوصل للبوكس خلال ثواني إذا كان شغّال ومتصل بالنت. الميزان والرئيسية والإعدادات ما تنقفل أبداً.</p>
+<p class="note">الأمر يوصل للبوكس خلال ثواني إذا كان شغّال ومتصل بالنت. لو اليوتيوب مفتوح وقت القفل يطلع منه على طول، وكل ما حاولوا يفتحونه يطلعون.<br>عشان تفتح الصفحة بضغطة: من سفاري اضغط مشاركة ← إضافة إلى الشاشة الرئيسية.</p>
 
 <script>
 'use strict';
@@ -98,81 +104,27 @@ function send(b, msg) {
   });
 }
 
-function untilFor(d) {
-  if (!d) return 0;
-  if (d === 'am') { var x = new Date(); x.setHours(6, 0, 0, 0); if (x <= new Date()) x.setDate(x.getDate() + 1); return x.getTime(); }
-  return Date.now() + d * 60000;
-}
-
-function apply(b, change) {
-  var s = b.st || { net: true, lock: [] };
-  var want = { net: s.net, lock: (s.lock || []).slice(), until: s.until || 0 };
-  change(want);
-  var locking = !want.net || want.lock.length, was = !s.net || (s.lock || []).length;
-  // لو كان مقفل من قبل وما غيّرت المدة، نخلي نفس وقت الفك
-  want.until = !locking ? 0 : (was && !b.durTouched) ? (s.until || 0) : untilFor(b.dur);
-  b.durTouched = false;
+function setYoutube(b, locked) {
   b.pending = 'يرسل…';
-  b.st = Object.assign({}, s, want);   // نعرضها على طول، والبوكس يأكدها
+  b.st = Object.assign({}, b.st, { youtube: locked });   // نعرضها على طول، والبوكس يأكدها
   draw(b);
-  send(b, want).then(function () { if (b.pending === 'يرسل…') { b.pending = 'وصل الأمر، بانتظار البوكس…'; draw(b); } });
-}
-
-function time12(ms) {
-  var d = new Date(ms), h = d.getHours(), mm = d.getMinutes();
-  var t = ar((h % 12 || 12) + ':' + (mm < 10 ? '0' : '') + mm) + (h < 12 ? ' ص' : ' م');
-  var today = new Date().toDateString() === d.toDateString();
-  return (today ? '' : 'بكرة ') + t;
+  send(b, { youtube: locked, until: 0 }).then(function () { if (b.pending === 'يرسل…') { b.pending = 'وصل الأمر، بانتظار البوكس…'; draw(b); } });
 }
 
 function draw(b) {
   var s = b.st, el = b.el;
   if (!s) { el.innerHTML = '<div class="top"><h2>بوكس</h2><div class="st"><i></i>ينتظر البوكس…</div></div><p class="now">لو طال الانتظار، البوكس طافي أو بدون نت.</p>'; return; }
-  var age = Date.now() - s.ts, online = age < 16 * 60000;
-  var lock = s.lock || [];
-  var yt = (s.apps || []).filter(function (a) { return /youtube/i.test(a.pkg); })[0];
+  var age = Date.now() - s.ts, online = age < 16 * 60000, locked = !!s.youtube;
   var html = '<div class="top"><h2>' + esc(s.name || 'بوكس') + '</h2><div class="st ' + (online ? 'ok' : 'bad') + '"><i></i>' +
     (online ? 'متصل' : 'ما رد من ' + ago(age)) + '</div></div>';
-  html += '<p class="now">' + (s.app ? 'آخر تطبيق انفتح: <b>' + esc(s.app) + '</b>' : '') + '</p>';
-  if (s.until && (!s.net || lock.length)) html += '<div class="until">القفل ينفك ' + time12(s.until) + '</div>';
-  html += row('net', 'قطع الإنترنت', s.net ? 'النت شغّال' : 'مقطوع عن كل التطبيقات', !s.net, 'sw');
-  if (yt) html += row('app:' + yt.pkg, 'اليوتيوب', lock.indexOf(yt.pkg) >= 0 ? 'مقفل' : 'مفتوح', lock.indexOf(yt.pkg) >= 0, 'sw');
-  html += row('all', 'كل التطبيقات', lock.indexOf('*') >= 0 ? 'مقفلة (إلا الميزان)' : 'مفتوحة', lock.indexOf('*') >= 0, 'sw');
-  html += '<div class="lbl">مدة القفل</div><div class="dur">' + [[0, 'لين أفتحه'], [60, 'ساعة'], [120, 'ساعتين'], ['am', 'لين الصبح']].map(function (d) {
-    return '<button data-d="' + d[0] + '" class="' + (String(b.dur) === String(d[0]) ? 'sel' : '') + '">' + d[1] + '</button>';
-  }).join('') + '</div>';
-  var others = (s.apps || []).filter(function (a) { return a !== yt; });
-  if (others.length) {
-    html += '<details' + (b.open ? ' open' : '') + '><summary>تطبيقات ثانية</summary>' + others.map(function (a) {
-      var on = lock.indexOf(a.pkg) >= 0;
-      return row('app:' + a.pkg, esc(a.label), on ? 'مقفل' : 'مفتوح', on, 'sw');
-    }).join('') + '</details>';
-  }
+  html += '<div class="state"><span class="ic">' + (locked ? '🔒' : '▶️') + '</span><span>اليوتيوب <b>' + (locked ? 'مقفل' : 'مفتوح') + '</b></span></div>';
+  if (!locked && s.onYoutube && online) html += '<div class="warn">شغّالين على اليوتيوب الحين</div>';
+  html += '<button class="big ' + (locked ? 'open' : 'lock') + '">' + (locked ? 'افتح اليوتيوب' : 'اقفل اليوتيوب') + '</button>';
   html += '<div class="pending">' + esc(b.pending) + '</div>';
   el.innerHTML = html;
-
-  el.querySelectorAll('[data-k]').forEach(function (btn) {
-    btn.onclick = function () {
-      var k = btn.dataset.k;
-      apply(b, function (w) {
-        if (k === 'net') w.net = !w.net;
-        else {
-          var p = k === 'all' ? '*' : k.slice(4), i = w.lock.indexOf(p);
-          if (i >= 0) w.lock.splice(i, 1); else w.lock.push(p);
-        }
-      });
-    };
-  });
-  el.querySelectorAll('.dur button').forEach(function (btn) {
-    btn.onclick = function () { b.dur = btn.dataset.d === 'am' ? 'am' : +btn.dataset.d; b.durTouched = true; draw(b); };
-  });
-  var det = el.querySelector('details');
-  if (det) det.ontoggle = function () { b.open = det.open; };
+  el.querySelector('.big').onclick = function () { setYoutube(b, !locked); };
 }
 
-function row(k, title, sub, on, cls) {
-  return '<div class="row"><div class="l"><b>' + title + '</b><span>' + sub + '</span></div><button class="' + cls + (on ? ' on' : '') + '" data-k="' + k + '"></button></div>';
-}
 function ago(ms) {
   var m = Math.round(ms / 60000);
   if (m < 60) return ar(m) + ' د';
