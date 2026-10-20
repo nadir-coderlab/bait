@@ -189,7 +189,7 @@ function draw(b) {
   var msg = s.msg || {};
   var mstate = '';
   if (b.sentMsg && msg.text !== b.sentMsg) mstate = 'ترسل…';
-  else if (msg.text) mstate = msg.seen ? 'قروها ✓' : 'طلعت على التلفزيون، ما قروها للحين';
+  else if (msg.text) mstate = msg.seen ? 'قروها ✓' : msg.gone ? 'طلعت دقيقة وراحت، ما ضغطوا موافق' : 'على التلفزيون الحين (تروح بعد دقيقة)';
   html += '<div class="msgbox"><div class="lbl">رسالة على كامل الشاشة</div><textarea rows="2" placeholder="اكتب رسالتك لهم…"></textarea>' +
     '<button class="send" data-a="msg">أرسل للتلفزيون</button>' +
     (msg.text ? '<div class="mst">آخر رسالة: «' + esc(msg.text.length > 40 ? msg.text.slice(0, 40) + '…' : msg.text) + '» — <b class="' + (msg.seen ? '' : 'wait') + '">' + mstate + '</b></div>' : '') + '</div>';
