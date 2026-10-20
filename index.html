@@ -169,7 +169,7 @@ function draw(b) {
   // لقطة الشاشة
   var shot = shots[b.id];
   html += '<div class="shotbox"><button class="shotbtn" data-a="shot">' + (b.shooting ? 'يصوّر…' : '📸 صوّر الشاشة') + '</button>' +
-    (shot ? '<a href="' + esc(shot.url) + '" target="_blank"><img src="' + esc(shot.url) + '" alt=""></a><div class="mst">لقطة ' + (Date.now() - shot.ts < 60000 ? 'الحين' : 'قبل ' + ago(Date.now() - shot.ts)) + '</div>' : '') + '</div>';
+    (shot ? '<a href="' + esc(shot.url) + '" target="_blank" class="shotimg"></a><div class="mst">لقطة ' + (Date.now() - shot.ts < 60000 ? 'الحين' : 'قبل ' + ago(Date.now() - shot.ts)) + '</div>' : '') + '</div>';
 
   // الرسالة
   var msg = s.msg || {};
@@ -191,6 +191,11 @@ function draw(b) {
   html += '<div class="pending">' + esc(b.pending) + '</div>';
   el.innerHTML = html;
 
+  // الصورة نفسها ما نعيد تحميلها مع كل رسمة
+  if (shot) {
+    if (!b.img || b.img.dataset.url !== shot.url) { b.img = new Image(); b.img.dataset.url = shot.url; b.img.src = shot.url; }
+    el.querySelector('.shotimg').appendChild(b.img);
+  }
   var nt = el.querySelector('textarea');
   nt.value = b.draft || '';
   if (focused) { nt.focus(); nt.setSelectionRange(nt.value.length, nt.value.length); }
