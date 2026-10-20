@@ -53,6 +53,9 @@ summary::after { content: ' ▾'; }
 .state .ic { font-size: 30px; }
 .big.tv { background: #2b0d10; color: #ffb4b4; border: 1px solid #ff6b6b; margin-top: 10px; }
 .big.open + .big, .big + .big { margin-top: 10px; }
+.shotbox { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 12px; }
+.shotbtn { width: 100%; font: inherit; font-size: 16px; font-weight: 700; color: var(--ink); background: rgba(255,255,255,.1); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
+.shotbox img { display: block; width: 100%; border-radius: 12px; margin-top: 10px; border: 1px solid var(--line); }
 .msgbox { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 6px; }
 .msgbox textarea { width: 100%; font: inherit; font-size: 16px; color: var(--ink); background: rgba(0,0,0,.25); border: 1px solid var(--line);
   border-radius: 14px; padding: 12px; margin-top: 6px; resize: vertical; }
@@ -85,14 +88,22 @@ if (key) localStorage.setItem('bait-key', key);
 if (key && location.hash !== '#' + key) history.replaceState(null, '', location.pathname + '#' + key);
 
 var boxes = {};   // رقم البوكس → { st, el }
+var shots = {};   // رقم البوكس → آخر لقطة
 var known = JSON.parse(localStorage.getItem('bait-boxes') || '[]');
 if (!key) $('boxes').innerHTML = '<div class="empty">ما فيه بيت مربوط.<br>افتح رابط الربط اللي وصلك مرة وحدة، أو صوّر الباركود من الرئيسية في التلفزيون.</div>';
 else {
   $('boxes').innerHTML = '<div class="empty" id="wait">يدوّر على البوكسات…</div>';
   var es = new EventSource(NTFY + 'tvh-' + key + '-s/sse?since=12h');
   es.onmessage = function (e) {
-    var st;
-    try { st = JSON.parse(JSON.parse(e.data).message); } catch (x) { return; }
+    var o, st;
+    try { o = JSON.parse(e.data); st = JSON.parse(o.message); } catch (x) { return; }
+    // لقطة شاشة: الصورة مرفقة بالرسالة (تنحذف من ntfy بعد ٣ ساعات)
+    if (st.shotOf) {
+      if (!o.attachment || Date.now() - st.ts > 3 * 3600000) return;
+      shots[st.shotOf] = { url: o.attachment.url, ts: st.ts };
+      if (boxes[st.shotOf]) { boxes[st.shotOf].shooting = false; boxes[st.shotOf].pending = ''; draw(boxes[st.shotOf]); }
+      return;
+    }
     if (!st.id) return;
     var b = boxes[st.id];
     if (!b) {
@@ -155,6 +166,11 @@ function draw(b) {
   if (!all) html += '<button class="big ' + (yt ? 'open' : 'lock') + '" data-a="yt">' + (yt ? 'افتح اليوتيوب' : 'اقفل اليوتيوب') + '</button>';
   html += '<button class="big ' + (all ? 'open' : 'tv') + '" data-a="all">' + (all ? 'افتح التلفزيون' : '🔒 اقفل التلفزيون كامل') + '</button>';
 
+  // لقطة الشاشة
+  var shot = shots[b.id];
+  html += '<div class="shotbox"><button class="shotbtn" data-a="shot">' + (b.shooting ? 'يصوّر…' : '📸 صوّر الشاشة') + '</button>' +
+    (shot ? '<a href="' + esc(shot.url) + '" target="_blank"><img src="' + esc(shot.url) + '" alt=""></a><div class="mst">لقطة ' + (Date.now() - shot.ts < 60000 ? 'الحين' : 'قبل ' + ago(Date.now() - shot.ts)) + '</div>' : '') + '</div>';
+
   // الرسالة
   var msg = s.msg || {};
   var mstate = '';
@@ -184,6 +200,11 @@ function draw(b) {
     setState(b, function (w) { w.all = !all; });
   };
   el.querySelector('[data-a=msg]').onclick = function () { sendMsg(b); };
+  el.querySelector('[data-a=shot]').onclick = function () {
+    b.shooting = true; draw(b);
+    send(b, { shot: 1 });
+    setTimeout(function () { if (b.shooting) { b.shooting = false; b.pending = 'ما وصلت اللقطة، جرّب مرة ثانية'; draw(b); } }, 25000);
+  };
   el.querySelectorAll('[data-p]').forEach(function (btn) {
     btn.onclick = function () {
       var p = btn.dataset.p;
