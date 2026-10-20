@@ -6,9 +6,9 @@
 <meta name="theme-color" content="#081a33">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="اليوتيوب">
+<meta name="apple-mobile-web-app-title" content="الشاشات">
 <link rel="apple-touch-icon" href="icon-180.png">
-<title>اليوتيوب</title>
+<title>شاشات البيت</title>
 <style>
 @font-face { font-family: T; src: url(fonts/thmanyah-400.otf); font-weight: 400; }
 @font-face { font-family: T; src: url(fonts/thmanyah-700.otf); font-weight: 700; }
@@ -50,14 +50,23 @@ summary::after { content: ' ▾'; }
 .big.open { background: #6ee7a8; color: #04261a; }
 .state { display: flex; align-items: center; gap: 12px; margin: 10px 0 14px; font-size: 18px; }
 .state .ic { font-size: 30px; }
+.big.tv { background: #2b0d10; color: #ffb4b4; border: 1px solid #ff6b6b; margin-top: 10px; }
+.big.open + .big, .big + .big { margin-top: 10px; }
+.msgbox { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 6px; }
+.msgbox textarea { width: 100%; font: inherit; font-size: 16px; color: var(--ink); background: rgba(0,0,0,.25); border: 1px solid var(--line);
+  border-radius: 14px; padding: 12px; margin-top: 6px; resize: vertical; }
+.send { width: 100%; font: inherit; font-size: 16px; font-weight: 700; color: #04202a; background: var(--teal); border: 0; border-radius: 14px; padding: 12px; margin-top: 8px; }
+.mst { font-size: 13px; color: var(--soft); margin-top: 8px; line-height: 1.6; }
+.mst b { color: #6ee7a8; } .mst b.wait { color: #e3b866; }
+.name { cursor: pointer; }
 .warn { font-size: 13px; color: #e3b866; margin-bottom: 8px; }
 .empty { color: var(--soft); text-align: center; padding: 60px 10px; line-height: 1.9; }
 .note { font-size: 12px; color: var(--faint); line-height: 1.7; margin-top: 10px; }
 </style>
 </head>
 <body>
-<h1>اليوتيوب في البيت</h1>
-<p class="sub">اقفله وافتحه من جوالك، من أي مكان</p>
+<h1>شاشات البيت</h1>
+<p class="sub">اقفل اليوتيوب أو التلفزيون كامل، وأرسل لهم رسالة، من أي مكان</p>
 <div id="boxes"></div>
 <p class="note">الأمر يوصل للبوكس خلال ثواني إذا كان شغّال ومتصل بالنت. لو اليوتيوب مفتوح وقت القفل يطلع منه على طول، وكل ما حاولوا يفتحونه يطلعون.<br>عشان تفتح الصفحة بضغطة: من سفاري اضغط مشاركة ← إضافة إلى الشاشة الرئيسية.</p>
 
@@ -104,25 +113,82 @@ function send(b, msg) {
   });
 }
 
-function setYoutube(b, locked) {
+function setState(b, patch) {
+  var cur = b.st || {};
+  var want = { youtube: !!cur.youtube, apps: (cur.apps || []).slice(), all: !!cur.all, until: 0 };
+  patch(want);
   b.pending = 'يرسل…';
-  b.st = Object.assign({}, b.st, { youtube: locked });   // نعرضها على طول، والبوكس يأكدها
+  b.st = Object.assign({}, cur, want);   // نعرضها على طول، والبوكس يأكدها
   draw(b);
-  send(b, { youtube: locked, until: 0 }).then(function () { if (b.pending === 'يرسل…') { b.pending = 'وصل الأمر، بانتظار البوكس…'; draw(b); } });
+  send(b, want).then(function () { if (b.pending === 'يرسل…') { b.pending = 'وصل الأمر، بانتظار البوكس…'; draw(b); } });
+}
+
+function sendMsg(b) {
+  var t = b.el.querySelector('textarea').value.trim();
+  if (!t) return;
+  b.el.querySelector('textarea').value = '';
+  b.draft = '';
+  b.sentMsg = t;
+  b.pending = 'يرسل الرسالة…';
+  draw(b);
+  send(b, { msg: t });
 }
 
 function draw(b) {
   var s = b.st, el = b.el;
   if (!s) { el.innerHTML = '<div class="top"><h2>بوكس</h2><div class="st"><i></i>ينتظر البوكس…</div></div><p class="now">لو طال الانتظار، البوكس طافي أو بدون نت.</p>'; return; }
-  var age = Date.now() - s.ts, online = age < 16 * 60000, locked = !!s.youtube;
-  var html = '<div class="top"><h2>' + esc(s.name || 'بوكس') + '</h2><div class="st ' + (online ? 'ok' : 'bad') + '"><i></i>' +
+  // نحفظ اللي انكتب في خانة الرسالة قبل ما نعيد الرسم
+  var ta = el.querySelector('textarea');
+  if (ta) b.draft = ta.value;
+  var focused = ta && document.activeElement === ta;
+  var age = Date.now() - s.ts, online = age < 16 * 60000, yt = !!s.youtube, all = !!s.all, apps = s.apps || [];
+  var html = '<div class="top"><h2 class="name">' + esc(s.name || 'بوكس') + '</h2><div class="st ' + (online ? 'ok' : 'bad') + '"><i></i>' +
     (online ? 'متصل' : 'ما رد من ' + ago(age)) + '</div></div>';
-  html += '<div class="state"><span class="ic">' + (locked ? '🔒' : '▶️') + '</span><span>اليوتيوب <b>' + (locked ? 'مقفل' : 'مفتوح') + '</b></span></div>';
-  if (!locked && s.onYoutube && online) html += '<div class="warn">شغّالين على اليوتيوب الحين</div>';
-  html += '<button class="big ' + (locked ? 'open' : 'lock') + '">' + (locked ? 'افتح اليوتيوب' : 'اقفل اليوتيوب') + '</button>';
+  html += '<div class="state"><span class="ic">' + (all ? '🔒' : yt ? '🚫' : '📺') + '</span><span>' +
+    (all ? 'التلفزيون <b>مقفل كامل</b>' : 'اليوتيوب <b>' + (yt ? 'مقفل' : 'مفتوح') + '</b>' + (apps.length ? ' · ' + ar(apps.length) + ' تطبيق مقفل' : '')) + '</span></div>';
+  if (!all && !yt && s.onYoutube && online) html += '<div class="warn">شغّالين على اليوتيوب الحين</div>';
+  if (!all) html += '<button class="big ' + (yt ? 'open' : 'lock') + '" data-a="yt">' + (yt ? 'افتح اليوتيوب' : 'اقفل اليوتيوب') + '</button>';
+  html += '<button class="big ' + (all ? 'open' : 'tv') + '" data-a="all">' + (all ? 'افتح التلفزيون' : '🔒 اقفل التلفزيون كامل') + '</button>';
+
+  // الرسالة
+  var msg = s.msg || {};
+  var mstate = '';
+  if (b.sentMsg && msg.text !== b.sentMsg) mstate = 'ترسل…';
+  else if (msg.text) mstate = msg.seen ? 'قروها ✓' : 'طلعت على التلفزيون، ما قروها للحين';
+  html += '<div class="msgbox"><div class="lbl">رسالة على كامل الشاشة</div><textarea rows="2" placeholder="اكتب رسالتك لهم…"></textarea>' +
+    '<button class="send" data-a="msg">أرسل للتلفزيون</button>' +
+    (msg.text ? '<div class="mst">آخر رسالة: «' + esc(msg.text.length > 40 ? msg.text.slice(0, 40) + '…' : msg.text) + '» — <b class="' + (msg.seen ? '' : 'wait') + '">' + mstate + '</b></div>' : '') + '</div>';
+
+  // التطبيقات الثانية
+  var list = s.list || [];
+  if (list.length) {
+    html += '<details' + (b.open ? ' open' : '') + '><summary>التطبيقات الثانية</summary>' + list.map(function (a) {
+      var on = apps.indexOf(a.pkg) >= 0;
+      return '<div class="row"><div class="l"><b>' + esc(a.label) + '</b><span>' + (on ? 'مقفل' : 'مفتوح') + '</span></div><button class="sw' + (on ? ' on' : '') + '" data-p="' + esc(a.pkg) + '"></button></div>';
+    }).join('') + '</details>';
+  }
   html += '<div class="pending">' + esc(b.pending) + '</div>';
   el.innerHTML = html;
-  el.querySelector('.big').onclick = function () { setYoutube(b, !locked); };
+
+  var nt = el.querySelector('textarea');
+  nt.value = b.draft || '';
+  if (focused) { nt.focus(); nt.setSelectionRange(nt.value.length, nt.value.length); }
+  el.querySelector('[data-a=yt]') && (el.querySelector('[data-a=yt]').onclick = function () { setState(b, function (w) { w.youtube = !yt; }); });
+  el.querySelector('[data-a=all]').onclick = function () {
+    if (!all && !confirm('تقفل التلفزيون كامل؟ يطلع عليه قفل والريموت ما يشتغل لين تفتحه من هنا.')) return;
+    setState(b, function (w) { w.all = !all; });
+  };
+  el.querySelector('[data-a=msg]').onclick = function () { sendMsg(b); };
+  el.querySelectorAll('[data-p]').forEach(function (btn) {
+    btn.onclick = function () {
+      var p = btn.dataset.p;
+      setState(b, function (w) { var i = w.apps.indexOf(p); if (i >= 0) w.apps.splice(i, 1); else w.apps.push(p); });
+    };
+  });
+  var det = el.querySelector('details');
+  if (det) det.ontoggle = function () { b.open = det.open; };
+  // الضغط على اسم البوكس يفتح التطبيقات الثانية
+  el.querySelector('.name').onclick = function () { b.open = !b.open; draw(b); };
 }
 
 function ago(ms) {
