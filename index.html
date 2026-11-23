@@ -98,6 +98,13 @@ var known = JSON.parse(localStorage.getItem('bait-boxes') || '[]');
 if (!key) $('boxes').innerHTML = '<div class="empty">ما فيه بيت مربوط.<br>افتح رابط الربط اللي وصلك مرة وحدة، أو صوّر الباركود من الرئيسية في التلفزيون.</div>';
 else {
   $('boxes').innerHTML = '<div class="empty" id="wait">يدوّر على البوكسات…</div>';
+  // لو ما رد ولا بوكس: ما نخليها معلّقة على «يدوّر»، نقول السبب
+  setTimeout(function () {
+    var w = $('wait');
+    if (w && !Object.keys(boxes).length) w.innerHTML = '<b>ما رد ولا بوكس من ١٢ ساعة.</b><br>' +
+      'البوكس يرسل حالته كل ١٠ دقايق لما يكون شغّال ومتصل بالنت وخدمة «التحكم عن بعد» مفعّلة فيه.<br>' +
+      'شغّل التلفزيون، وتأكد إن النت واصل له، وافتح من الرئيسية «التحكم باليوتيوب من الجوال»: لو طلع «فعّل الخدمة» فعّلها وارجع هنا.';
+  }, 20000);
   var es = new EventSource(NTFY + 'tvh-' + key + '-s/sse?since=12h');
   es.onmessage = function (e) {
     var o, st;
